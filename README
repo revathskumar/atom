@@ -1,0 +1,3 @@
+Its a MV based PHP framework
+It have a in Built ORM made of PHP PDO and supports SQL SERVER 2008
+In this we create models for each module rather than for each tables in other PHP frameworks.
