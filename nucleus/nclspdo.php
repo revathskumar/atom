@@ -70,8 +70,12 @@ abstract class nclspdo{
 		'ROUND' => array(),
 		'NOW' => array(),
 		'FORMAT' => array(),
-		'CONVERT' => array(),
-		'LOWER' => array()
+                'LOWER' => array(),
+                'CONVERT' => array(),
+                'ISNULL' => array(),
+                'ISNOTNULL' => array(),
+                'MONTH' => array(),
+                'YEAR' => array()
 	);
 
 	/**
@@ -132,6 +136,15 @@ abstract class nclspdo{
     }
 
     /**
+     * Function to get last insert id
+     * @return <integer>
+     */
+    protected function getLastInsertId(){
+        $iLastInsertId = $this->objDbConn->lastInsertId();
+        return $iLastInsertId;
+    }
+
+    /**
      *
      * To insert a new Record to the table
      * @param array $tableName
@@ -145,11 +158,7 @@ abstract class nclspdo{
         $data = $this->processData($tableName, $data);
         if(count($data[$tableName])< 1)return FALSE;
         $sql = "insert into {$tableName} (" . implode(',', array_keys($data[$tableName])) . ") values (" . implode(',', $data[$tableName]) . ")";
-		$result = $this->query($sql);
-   		if(!$result){
-			pr($sql);
-			return false;
-		}
+        $result = $this->query($sql);
         return $this->countAffecetedRows($result);
     }
 
@@ -166,25 +175,22 @@ abstract class nclspdo{
         $data = $this->ignoreBlankValueFields($data);
         $data = $this->processData($tableName, $data);
         foreach ($data[$tableName] as $field => $value) {
-            if ($field == 'id' || 'ID' === $field) continue;
+            if ($field == 'id'
+                )continue;
             $temp[] = $field . " = " . $value;
         }
-				
+
         if(is_array($params) && array_key_exists('condition', $params)){
             $arrFields = $this->formatWhereCondition($tableName, $params['condition']);
             $condition = $this->where($tableName,$arrFields);
-//			pr($arrFields);
+
             $sql = "update {$tableName} set " . implode(',', $temp) . " {$condition} ;";
-            if(isset($data[$tableName]['id'])) $sql .= " AND id = ".$data[$tableName]['id'];
-            if(isset($data[$tableName]['ID']) and !isset($arrFields['ID'])) $sql .= " AND {$tableName}.ID = ".$data[$tableName]['ID'];
+            if(isset($data[$tableName]['id']) && !isset($arrFields['id'])) $sql .= " AND {$tableName}.id = ".$data[$tableName]['id'];
         }
         else{
-            $sql = "update {$tableName} set " . implode(',', $temp) . " where ";//id=" . $data[$tableName]['id'] . ";";
-			if(isset($data[$tableName]['id'])) $sql .= " id = ".$data[$tableName]['id'];
-            if(isset($data[$tableName]['ID'])) $sql .= " {$tableName}.ID = ".$data[$tableName]['ID'];
+            $sql = "update {$tableName} set " . implode(',', $temp) . " where id=" . $data[$tableName]['id'] . ";";
         }
-
-	       $result = $this->query($sql);
+        $result = $this->query($sql);
         if(!$result){
                 pr($sql);
                 return FALSE;
@@ -192,7 +198,34 @@ abstract class nclspdo{
         return $this->countAffecetedRows($result);
     }
 
-	/**
+    /**
+     * To delete  a record with a given id
+     *
+     * @param String $tableName
+     * @param Array $data
+     * @return boolean
+     */
+    protected function del($tableName, $data, $params=null) {
+        if(!is_array($data) || (!array_key_exists($tableName, $data) && !array_key_exists('id', $data[$tableName]) && !array_key_exists('condition', $params))) return FALSE;
+        if(is_array($params) && array_key_exists('condition', $params)){
+            $arrFields = $this->formatWhereCondition($tableName, $params['condition']);
+            $condition = $this->where($tableName,$arrFields);
+            $sql = "delete from {$tableName} {$condition};";
+            if(isset($data[$tableName]['id']) && !isset($params['condition']['id'])) $sql .= " AND {$tableName}.id = ".$data[$tableName]['id'];
+        }
+        else{
+            $sql = "delete from {$tableName} where id = {$data[$tableName]['id']};";
+        }
+
+        $result = $this->query($sql);
+        if(!$result){
+            pr($sql);
+            return FALSE;
+        }
+        return $this->countAffecetedRows($result);
+    }
+
+    /**
      * To TRUNCATE TABLE
      *
      * @param String $tableName
@@ -206,21 +239,6 @@ abstract class nclspdo{
             $sql="TRUNCATE TABLE " . $tableName ;
             return $this->query($sql);
         }
-    }
-
-
-    /**
-     * To delete  a record with a given id
-     *
-     * @param String $tableName
-     * @param Array $data
-     * @return boolean
-     */
-    protected function del($tableName, $data) {
-		if(!is_array($data) || !array_key_exists($tableName, $data) || !array_key_exists('id', $data[$tableName]))return FALSE;
-        $sql = "delete from {$tableName} where id = {$data[$tableName]['id']};";
-        $result = $this->query($sql);
-        return $this->countAffecetedRows($result);
     }
 
     /**
@@ -289,8 +307,7 @@ abstract class nclspdo{
     private function getFromCache($strTblName) {
         $strFileName = $strTblName . ".json";
         $strFileContents = "";
-		$strFilePath = dirname(__FILE__) . "\..".DS."stash".DS.$strFileName;
-
+        $strFilePath = dirname(__FILE__) . "\..".DS."stash".DS.$strFileName;
         if (file_exists($strFilePath)) {
             //get file modification time
             $strFileCreatedTime = date("H:i:s", filemtime($strFilePath));
@@ -328,12 +345,63 @@ abstract class nclspdo{
     }
 
     /**
+     * Function to change the custom date format to default sys format
+     * @param <date/datetime> $val
+     * @param <string> $format
+     * @return date value
+     */
+    private function changeDateToDefaultFormat($val,$format){
+        $strDateCustomFormat = $_SESSION["dateformat"];
+        $strDate = "";
+        if($val != ""){
+            switch ($strDateCustomFormat){
+                case "d-m-Y":
+                    if($format == "date"){
+                        $arrVals = explode("-", $val);
+                        $strDate = $arrVals[0]."-".$arrVals[1]."-".$arrVals[2];
+                    }
+                    elseif($format == "datetime"){
+                        $arrVals = explode(" ", $val);
+                        $arrValDetails = explode("-", $arrVals[0]);
+                        $strDate = $arrValDetails[0]."-".$arrValDetails[1]."-".$arrValDetails[2]." ".$arrVals[1];
+                    }
+                    break;
+                case "m-d-Y":
+                    if($format == "date"){
+                        $arrVals = explode("-", $val);
+                        $strDate = $arrVals[1]."-".$arrVals[0]."-".$arrVals[2];
+                    }
+                    elseif($format == "datetime"){
+                        $arrVals = explode(" ", $val);
+                        $arrValDetails = explode("-", $arrVals[0]);
+                        $strDate = $arrValDetails[1]."-".$arrValDetails[0]."-".$arrValDetails[2]." ".$arrVals[1];
+                    }
+                    break;
+                case "Y-m-d":
+                    if($format == "date"){
+                        $arrVals = explode("-", $val);
+                        $strDate = $arrVals[2]."-".$arrVals[1]."-".$arrVals[0];
+                    }
+                    elseif($format == "datetime"){
+                        $arrVals = explode(" ", $val);
+                        $arrValDetails = explode("-", $arrVals[0]);
+                        $strDate = $arrValDetails[2]."-".$arrValDetails[1]."-".$arrValDetails[0]." ".$arrVals[1];
+                    }
+                    break;
+            }
+        }
+        return $strDate;
+    }
+    
+    /**
      * Function to change the date format
      * @param <date value> $val
      * @param <date format> $format
      * @return <changed date value>
      */
     private function changeDateFormat($val,$format){
+
+        $val = $this->changeDateToDefaultFormat($val, $format);
         
         if($val != "" && count($this->dbConfigs) > 0){
             switch ($this->dbConfigs['driver']){
@@ -345,14 +413,6 @@ abstract class nclspdo{
                         $val = date("Y-m-d H:i:s",  strtotime($val));
                     }
                     break;
-                case "sqlsrv":
-                    if($format == "date"){
-                        $val = date("Y-m-d",strtotime($val));
-                    }
-                    elseif($format == "datetime"){
-                        $val = date("Y-m-d H:i:s",strtotime($val));
-                    }
-                     break;
             }
             return $val;
         }
@@ -363,7 +423,7 @@ abstract class nclspdo{
      *
      * @param mixed $data
      */
-	private function processData($tableName, $data) {
+    private function processData($tableName, $data) {
 		if(!$this->schema || !array_key_exists($tableName, $this->schema)) $this->loadSchema($tableName);
 		if(!is_array($data) || !array_key_exists($tableName, $data))return FALSE;
 		foreach ($data[$tableName] as $field => $value) {
@@ -375,28 +435,13 @@ abstract class nclspdo{
         return $data;
     }
 
-	/**
-	 * To addSlashes to all the values in an multi dimensional array
-	 *
-	 * @param Array $value
-	 * @return String
-	 */
-	private function addSlashesDeep($value) {
-		$value = is_array($value) ? array_map(array($this,'addSlashesDeep'), $value) : addslashes($value);
-		return $value;
-	}
-
-
     /**
-     * Function to get last insert id
-     * @return <integer>
+     * Function to format the fields for where condition
+     * @param <string> $tableName
+     * @param <array> $fieldsArr
+     * @return <array>
      */
-    protected function getLastInsertId(){
-        $iLastInsertId = $this->objDbConn->lastInsertId();
-        return $iLastInsertId;
-    }
-
-   private function formatWhereCondition($tableName,$fieldsArr) {
+    private function formatWhereCondition($tableName,$fieldsArr) {
         if (is_array($fieldsArr)) {
             if (count($fieldsArr) > 0) {
                 foreach ($fieldsArr as $func => $field) {
@@ -407,7 +452,13 @@ abstract class nclspdo{
                         }
                         if (array_key_exists($func, $this->_func)) {
                             $func = strtoupper($func);
-                            $fields["{$func}({$tableName}.{$fieldKey})"] = $value;
+                            if($func == "ISNULL" || $func == "ISNOTNULL"){
+                                $fields["{$tableName}.{$fieldKey}"] = $value;
+                            }
+                            else{
+                                $fields["{$func}({$tableName}.{$fieldKey})"] = $value;
+                            }
+
                         } else {
                             //$fields[] = "{$tableName}.{$field}";
                             $fields["{$func}"] = $field;
@@ -436,7 +487,7 @@ abstract class nclspdo{
 	protected  function get($tableName,$params = null) {
 		if(!$this->schema || !array_key_exists($tableName,$this->schema))$this->loadSchema ($tableName);
 		$fields =  array();
-		$conditions = $order = $limit = $group = $having = $join = $offset = "";
+		$conditions = $order = $limit = $group = $having = $join = "";
 		$sql = "";
 		$fields = $this->formatFields($tableName, $params['fields']);
 
@@ -456,15 +507,10 @@ abstract class nclspdo{
 				$field = $this->formatFields($tableName, $field);
 				$orderBy[] = implode(',', $field)." ".$dir;
 			}
-			 if(count($params['order']) > 0) $order = " ORDER BY ".implode(', ', $orderBy);
+                        if(count($params['order']) > 0) $order = " ORDER BY ".implode(', ', $orderBy);
 		}
-		if(array_key_exists('limit', $params) && ($this->dbConfigs["driver"] == 'mssql' || $this->dbConfigs["driver"]== 'sqlsrv') && count($params['limit']) > 1){
-				$offset = $params['limit'][0];
-				$limit = (array_key_exists('page', $params) && array_key_exists('count', $params['page'])) ? $params['limit'][0]+$params['page']['count'] : $params['limit'][0]+$params['limit'][1]-1;
-//				pr($offset);
-//				pr($limit);
-		}
-		elseif(array_key_exists('limit', $params) || array_key_exists('page', $params)){
+		
+		if(array_key_exists('limit', $params) || array_key_exists('page', $params)){
 			if(is_array($params['limit'])){
 				$offset = $limit = "";
 				if($this->dbConfigs["driver"] == 'mssql' || $this->dbConfigs["driver"]== 'sqlsrv'){
@@ -497,13 +543,7 @@ abstract class nclspdo{
 			$join  = $this->getjoinquery($tableName, $params['join']);
 		}
 		
-		if(array_key_exists('limit', $params) && ($this->dbConfigs["driver"] == 'mssql' || $this->dbConfigs["driver"]== 'sqlsrv') && count($params['limit']) > 1){
-			if($order == "")$order = "ORDER BY  ID";
-			$sql = "SELECT * FROM   (SELECT ROW_NUMBER() OVER({$order}) AS  rownum, ".implode(', ', $fields)." FROM {$tableName} {$join} {$condition} {$group}) AS temp WHERE  rownum >= {$offset} AND rownum <= {$limit}";
-		}
-		else{
-			$sql = "SELECT {$top} ".implode(', ', $fields)." FROM {$tableName} {$join} {$condition} {$group} {$having} {$order} {$limit}";
-		}
+		$sql = "SELECT {$top} ".implode(', ', $fields)." FROM {$tableName} {$join} {$condition} {$group} {$having} {$order} {$limit}";
 //		pr($sql);
 		$result = $this->query($sql);
 		if(!$result){
@@ -522,7 +562,6 @@ abstract class nclspdo{
 	 * @return Array
 	 */
 	private function formatFields($tableName, $fieldsArr) {
-
 		if(is_array($fieldsArr)){
                     if(count($fieldsArr) > 0){
                         foreach ($fieldsArr as $func => $field) {
@@ -539,7 +578,6 @@ abstract class nclspdo{
                                         $startPart = trim(substr($condition, 0, $pos));
                                         $fields[] = "{$func}({$startPart}) {$endPart}";
                                 }else{
-//									pr($field);
                                         if(is_string($func)){
                                                 $func = strtoupper($func);
                                                 if(array_key_exists($func, $this->_func)){
@@ -576,6 +614,16 @@ abstract class nclspdo{
 		return $fields;
 	}
 
+        /**
+	 * To addSlashes to all the values in an multi dimensional array
+	 * @param Array $value
+	 * @return String
+	 */
+	private function addSlashesDeep($value) {
+            $value = is_array($value) ? array_map(array($this,'addSlashesDeep'), $value) : addslashes($value);
+            return $value;
+	}
+
 	/**
 	 * Generate where clause for the select statement
 	 *
@@ -585,12 +633,15 @@ abstract class nclspdo{
 	 * @param array $options
 	 * @return String
 	 */
-	Private  function where($tableName,array $conditions,array $options = array()){
-		if(empty ($options))$options = array('prepend' => true ,'join' => ' AND ');
+	private  function where($tableName,array $conditions,array $options = array()){
+                if(empty ($options))$options = array('prepend' => true ,'join' => ' AND ');
 		if(!isset($options['join'])) $options['join'] = ' AND ';
 		$ops = $this->_operators;
+
+                if(!array_key_exists($tableName, $this->schema)) $this->loadSchema ($tableName);
 		$schema = $this->schema[$tableName];
-		$conditions = $this->addSlashesDeep($conditions);
+                $conditions = $this->addSlashesDeep($conditions);
+
 		switch (true) {
 			case empty($conditions):
 				return '';
@@ -604,38 +655,64 @@ abstract class nclspdo{
                 if(count($conditions) > 0 && count($schema) > 0){
                     foreach ($conditions as $key => $value) {
                             $schema[$key] = isset($schema[$key]) ? $schema[$key] : array();
+                            
+                            if(array_key_exists ($key,$this->schema[$tableName]) || $key == 'OR' || $key == 'AND'){
+                                $strTmpTableName = $tableName;
+                                $key1 = $key;
+                                $strTblName = $strTmpTableName;
+                            }
+                            else{
+                                $strTmpTableName = "";
+                                if(strpos($key, ".") !== false) $arrTables = explode(".", $key);
+                                $strTmpTableName = $arrTables[0];
+                                $key = $arrTables[1];
+
+                                $key1 = trim($key,")");
+                                
+                                if(strpos($strTmpTableName, "(") !== false ) 
+                                        $strTblName = substr($strTmpTableName,  strpos($strTmpTableName, "(") + 1);
+                                else
+                                    $strTblName = $strTmpTableName;
+                                
+                                $schema[$key1] = isset($schema[$key1]) ? $schema[$key1] : array();
+                            }
+
+                            if(!array_key_exists((isset($strTblName)? $strTblName : $strTmpTableName), $this->schema)) $this->loadSchema ((isset($strTblName) ? $strTblName : $strTmpTableName));
+                                $schema = $this->schema[(isset($strTblName)? $strTblName : $strTmpTableName)];
+
                             switch (true) {
                                     case strtolower($key) == 'or':
                                     case strtolower($key) == 'and':
-                                            $result[] = $this->where($tableName,$value,array('prepend' => FALSE,'join' => " {$key} "));
+                                            $result[] = $this->where($strTmpTableName,$value,array('prepend' => FALSE,'join' => " {$key} "));
                                     break;
                                     case (is_numeric($key) && is_array($value)):
-                                            $result[] = $this->where($tableName,$value,array('prepend' => FALSE));
+                                            $result[] = $this->where($strTmpTableName,$value,array('prepend' => FALSE));
                                     break;
                                     case (is_numeric($key) && is_string($value)):
                                             $result[] = $value;
                                     break;
                                     case (is_string($key) && is_array($value) && isset($ops[key($value)])):
                                             foreach ($value as $op => $val) {
-                                                    $result[] = $this->_operator($tableName,$key, array($op => $val), $schema[$key]);
+                                                    $result[] = $this->_operator($strTmpTableName,$key, array($op => $val), $schema[$key1]);
                                             }
                                     break;
                                     case (is_string($key) && is_array($value)):
-                                            $value = join(', ', $this->value($value, $schema[$key]));
-                                            $result[] = "{$tableName}.{$key} IN ({$value})";
+                                            $value = join(', ', $this->value($value, $schema[$key1]));
+                                            $result[] = "{$strTmpTableName}.{$key} IN ({$value})";
                                     break;
                                     case (is_string($key) && is_string($value) && strpos($value,'%') !== FALSE):
-                                            if(array_key_exists ($key,$this->schema[$tableName])){
-                                                    $result[] =  "{$tableName}.{$key}  LIKE '{$value}'";
+                                            $result[] =  "{$strTmpTableName}.{$key}  LIKE '{$value}'";
+                                    break;
+                                    default:                                            
+                                            if($strTmpTableName != "") $value = $this->value($value, $schema[$key1]);
+
+                                            if(($value == "IS NULL" || $value == "IS NOT NULL") && is_string($value)){
+                                                $result[] = $strTmpTableName.".".$key." {$value} ";
                                             }
                                             else{
-                                                    $result[] = "{$key} LIKE '{$value}'";
+                                                if(is_string($value) && $strTmpTableName == "") $value = "'".addslashes ($value)."'";
+                                                $result[] = $strTmpTableName.".".$key." = ".$value;
                                             }
-                                            //$result[] = "{$tableName}.{$key} LIKE '{$value}'";
-                                    break;
-                                    default:
-                                            $value = $this->value($value, $schema[$key]);
-                                            $result[] = $tableName.".".$key." = ".$value;
                                     break;
                             }
                     }
@@ -649,9 +726,10 @@ abstract class nclspdo{
 		return ($options['prepend'] && !empty($result)) ? "WHERE {$result}" : $result;
 	}
 
+        
+
 	/**
 	 * Converts a given value into the proper type based on a given schema definition.
-	 *
 	 *
 	 * @param mixed $value The value to be converted. Arrays will be recursively converted.
 	 * @param array $schema Formatted array
@@ -668,8 +746,8 @@ abstract class nclspdo{
 			return 'NULL';
 		}
 
-		if(count($schema) > 0){
-			switch ($type = $schema['type']) {
+                if(count($schema) > 0){
+                    switch ($type = $schema['type']) {
                             case 'boolean':
                                     return $this->_toNativeBoolean($value);
                             case 'float':
@@ -679,8 +757,6 @@ abstract class nclspdo{
                             case 'varchar':
                             case 'nvarchar':
                                     return "'".$value."'";
-							case 'ntext':
-								return "\"".$value."\"";
                             case 'integer':
                             case 'bigint':
                             case 'int':
@@ -691,7 +767,7 @@ abstract class nclspdo{
                                 return "'".date("Y-m-d H:i:s", strtotime($value))."'";
 
                     }
-		}
+                }
 	}
 
 	private function _toNativeBoolean($value) {
@@ -712,17 +788,17 @@ abstract class nclspdo{
 		$options += $defaults;
 
 		list($op, $value) = each($value);
-
+                
 		$config = $this->_operators[$op];
-
-		$key = "{$tableName}.{$key}";
+                $key = "{$tableName}.{$key}";
 		$values = array();
-
+                
                 if(count($value) > 0){
                     foreach ((array) $value as $val) {
                             $values[] = $this->value($val, $schema);
                     }
                 }
+
 		switch (true) {
 			case (isset($config['format'])):
 				return $key . ' ' . $this->format($config['format'],$values);
@@ -777,7 +853,7 @@ abstract class nclspdo{
 			if(isset($arrRelations[$tablename]['alias'])){
 				$parentTableWithAlias = $arrRelations[$tablename]['alias'];
 			}
-			
+
 			$alias = $childTableNameWithAlias = $arrSubRelation;
 			if(array_key_exists('tableName', $value)){
 				$childTableNameWithAlias = "{$value['tableName']} AS {$value['alias']}";
@@ -789,12 +865,15 @@ abstract class nclspdo{
 				$strJoinQuery .= " ".$arrSubRelValues['type']." ".$childTableNameWithAlias." ON (".$alias.".".$arrSubRelValues['childkey']." = ".$parentTableWithAlias.".".$arrSubRelValues['parentkey'].") ";
 			}
 		}
-		foreach ($arrrelationtables as $parent => $child) {
-			if(is_string($parent)){
-//				if(array_key_exists('tableName', $value))$arrSubRelation = $value['tableName'];
-				$strJoinQuery .= $this->getjoinquery($parent, $child);
-			}
-		}
+                
+                if(count($arrrelationtables) > 0){
+                    foreach ($arrrelationtables as $parent => $child) {
+                            if(is_string($parent)){
+                                    $strJoinQuery .= $this->getjoinquery($parent, $child);
+                            }
+                    }
+                }
+                
 //		pr($strJoinQuery);
 		return $strJoinQuery;
 	}
@@ -899,9 +978,7 @@ abstract class nclspdo{
      */
     private function query($strQuery) {
 		try {
-            $result = $this->objDbConn->query($strQuery);
-			if(!$result)pr($this->objDbConn->errorInfo ());
-			return $result;
+            return $this->objDbConn->query($strQuery);
         } catch (Exception $e) {
             return FALSE;
         }
